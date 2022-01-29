@@ -1,0 +1,20 @@
+listen:
+  grpc:
+    server:
+      endpoint: localhost:8091
+
+basics:
+  key:
+    path: ./config/key
+
+network:
+  inner_ring:
+    keys:
+      - 02b3622bf4017bdfe317c58aed5f4c753f206b7db896046fa7d774bbc4bf7f8dc2
+
+  netmap:
+    epoch: 321
+
+local_node:
+  info:
+    path: ./config/node_info_local.json
