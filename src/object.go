@@ -13,8 +13,66 @@ import (
 type serviceServerObject struct {
 }
 
-func (x *serviceServerObject) Get(_ *objectV2.GetRequest, _ objectSvc.GetObjectStream) error {
-	return errors.New("unimplemented")
+func (x *serviceServerObject) Get(req *objectV2.GetRequest, stream objectSvc.GetObjectStream) error {
+	var reqLog requestProcLogger
+
+	reqLog.name = "Object.Get"
+
+	reqDumper.acquire(&reqLog)
+
+	defer reqLog.free()
+
+	printMessage(&reqLog, req)
+
+	var partInit objectV2.GetObjectPartInit
+
+	obj := objecttest.Object().ToV2()
+
+	partInit.SetHeader(obj.GetHeader())
+	partInit.SetObjectID(obj.GetObjectID())
+	partInit.SetSignature(obj.GetSignature())
+
+	var body objectV2.GetResponseBody
+
+	body.SetObjectPart(&partInit)
+
+	var resp objectV2.GetResponse
+
+	resp.SetBody(&body)
+
+	err := stream.Send(&resp)
+	if err != nil {
+		return err
+	}
+
+	var partChunk objectV2.GetObjectPartChunk
+
+	body.SetObjectPart(&partChunk)
+
+	txt := []byte("Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore " +
+		"et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip " +
+		"ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu " +
+		"fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt " +
+		"mollit anim id est laborum.")
+
+	for ln := len(txt); ln > 0; ln = len(txt) {
+		if ln > 5 {
+			ln = 5
+		}
+
+		partChunk.SetChunk(txt[:ln])
+
+		resp.SetVerificationHeader(nil) // because we reuse same response
+
+		err = stream.Send(&resp)
+		if err != nil {
+			return err
+		}
+
+		txt = txt[ln:]
+	}
+
+	return nil
 }
 
 type streamObjectPut struct {
