@@ -3,12 +3,11 @@ package main
 import (
 	"sync"
 
-	"github.com/nspcc-dev/neofs-sdk-go/owner"
-
 	containercore "github.com/nspcc-dev/neofs-node/pkg/core/container"
 	"github.com/nspcc-dev/neofs-sdk-go/container"
 	cid "github.com/nspcc-dev/neofs-sdk-go/container/id"
 	"github.com/nspcc-dev/neofs-sdk-go/eacl"
+	"github.com/nspcc-dev/neofs-sdk-go/owner"
 )
 
 type vContainer struct {

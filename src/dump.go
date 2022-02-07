@@ -8,7 +8,6 @@ import (
 	"sync"
 
 	"github.com/nspcc-dev/neofs-api-go/v2/rpc/message"
-
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 )

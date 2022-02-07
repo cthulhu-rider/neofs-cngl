@@ -8,19 +8,20 @@ import (
 	"os"
 
 	"github.com/nspcc-dev/neo-go/pkg/crypto/keys"
+	accountingapigrpc "github.com/nspcc-dev/neofs-api-go/v2/accounting/grpc"
 	containerapigrpc "github.com/nspcc-dev/neofs-api-go/v2/container/grpc"
 	objectapigrpc "github.com/nspcc-dev/neofs-api-go/v2/object/grpc"
 	sessionapigrpc "github.com/nspcc-dev/neofs-api-go/v2/session/grpc"
+	accountinggrpc "github.com/nspcc-dev/neofs-node/pkg/network/transport/accounting/grpc"
 	containergrpc "github.com/nspcc-dev/neofs-node/pkg/network/transport/container/grpc"
 	objectgrpc "github.com/nspcc-dev/neofs-node/pkg/network/transport/object/grpc"
 	sessiongrpc "github.com/nspcc-dev/neofs-node/pkg/network/transport/session/grpc"
+	"github.com/nspcc-dev/neofs-node/pkg/services/accounting"
 	"github.com/nspcc-dev/neofs-node/pkg/services/container"
 	container2 "github.com/nspcc-dev/neofs-node/pkg/services/container/morph"
 	"github.com/nspcc-dev/neofs-node/pkg/services/object"
-	"github.com/nspcc-dev/neofs-node/pkg/services/object/acl"
 	"github.com/nspcc-dev/neofs-node/pkg/services/session"
 	"github.com/nspcc-dev/neofs-sdk-go/netmap"
-	"go.uber.org/zap"
 	"google.golang.org/grpc"
 )
 
@@ -64,6 +65,10 @@ type appPreparer struct {
 
 		container struct {
 			server container.Server
+		}
+
+		accounting struct {
+			server accounting.Server
 		}
 	}
 }
@@ -116,7 +121,7 @@ func (x *appPreparer) prepare() {
 func (x *appPreparer) prepareBasics(ctx *prepareAppContext) {
 	binKey, err := os.ReadFile(ctx.basics.keyFilepath)
 	if err != nil {
-		fmt.Errorf("read private key file: %w", err)
+		panic(fmt.Errorf("read private key file: %w", err))
 	}
 
 	k, err := keys.NewPrivateKeyFromBytes(binKey)
@@ -182,20 +187,21 @@ func (x *appPreparer) prepareAPI(ctx *prepareAppContext) {
 	x.prepareAPIObject(ctx)
 	x.prepareAPISession(ctx)
 	x.prepareAPIContainer(ctx)
+	x.prepareAPIAccounting(ctx)
 }
 
 func (x *appPreparer) prepareAPIObject(_ *prepareAppContext) {
 	x.api.object.server = new(serviceServerObject)
 
-	x.api.object.server = acl.New(
-		acl.WithNextService(x.api.object.server),
-		acl.WithSenderClassifier(
-			acl.NewSenderClassifier(zap.NewNop(), &x.network.ir.state, &x.network.netMap.state),
-		),
-		acl.WithContainerSource(&x.network.containers.state),
-		acl.WithEACLSource(&x.network.containers.state),
-		acl.WithNetmapState(&x.network.netMap.state),
-	)
+	// x.api.object.server = acl.New(
+	//	acl.WithNextService(x.api.object.server),
+	//	acl.WithSenderClassifier(
+	//		acl.NewSenderClassifier(zap.NewNop(), &x.network.ir.state, &x.network.netMap.state),
+	//	),
+	//	acl.WithContainerSource(&x.network.containers.state),
+	//	acl.WithEACLSource(&x.network.containers.state),
+	//	acl.WithNetmapState(&x.network.netMap.state),
+	// )
 
 	x.api.object.server = object.NewSignService(&x.basics.key.PrivateKey, x.api.object.server)
 }
@@ -213,10 +219,16 @@ func (x *appPreparer) prepareAPISession(_ *prepareAppContext) {
 	x.api.session.server = session.NewSignService(&x.basics.key.PrivateKey, x.api.session.server)
 }
 
+func (x *appPreparer) prepareAPIAccounting(_ *prepareAppContext) {
+	x.api.accounting.server = new(serviceServerAccounting)
+	x.api.accounting.server = accounting.NewSignService(&x.basics.key.PrivateKey, x.api.accounting.server)
+}
+
 func (x *appPreparer) prepareGRPC(_ *prepareAppContext) {
 	*x.grpc.server = *grpc.NewServer()
 
 	objectapigrpc.RegisterObjectServiceServer(x.grpc.server, objectgrpc.New(x.api.object.server))
 	sessionapigrpc.RegisterSessionServiceServer(x.grpc.server, sessiongrpc.New(x.api.session.server))
 	containerapigrpc.RegisterContainerServiceServer(x.grpc.server, containergrpc.New(x.api.container.server))
+	accountingapigrpc.RegisterAccountingServiceServer(x.grpc.server, accountinggrpc.New(x.api.accounting.server))
 }

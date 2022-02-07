@@ -5,16 +5,15 @@ import (
 	"errors"
 	"fmt"
 
-	objecttest "github.com/nspcc-dev/neofs-sdk-go/object/test"
-
 	objectV2 "github.com/nspcc-dev/neofs-api-go/v2/object"
 	objectSvc "github.com/nspcc-dev/neofs-node/pkg/services/object"
+	objecttest "github.com/nspcc-dev/neofs-sdk-go/object/test"
 )
 
 type serviceServerObject struct {
 }
 
-func (x *serviceServerObject) Get(req *objectV2.GetRequest, stream objectSvc.GetObjectStream) error {
+func (x *serviceServerObject) Get(_ *objectV2.GetRequest, _ objectSvc.GetObjectStream) error {
 	return errors.New("unimplemented")
 }
 
@@ -22,9 +21,9 @@ type streamObjectPut struct {
 	reqLog requestProcLogger
 }
 
-//type jsonObjectPutPayload objectV2.PutRequest
+// type jsonObjectPutPayload objectV2.PutRequest
 //
-//func (x jsonObjectPutPayload) MarshalJSON() ([]byte, error) {
+// func (x jsonObjectPutPayload) MarshalJSON() ([]byte, error) {
 //	jTxt, err := protojson.MarshalOptions{
 //		Multiline:       true,
 //		EmitUnpopulated: true,
@@ -57,7 +56,7 @@ type streamObjectPut struct {
 //	if err != nil {
 //		return err
 //	}
-//}
+// }
 
 func (x *streamObjectPut) Send(req *objectV2.PutRequest) error {
 	printMessage(&x.reqLog, req)
@@ -80,7 +79,7 @@ func (x *streamObjectPut) CloseAndRecv() (*objectV2.PutResponse, error) {
 	return &resp, nil
 }
 
-func (x *serviceServerObject) Put(ctx context.Context) (objectSvc.PutObjectStream, error) {
+func (x *serviceServerObject) Put(_ context.Context) (objectSvc.PutObjectStream, error) {
 	var stream streamObjectPut
 
 	stream.reqLog.name = "Object.Put"
@@ -90,22 +89,22 @@ func (x *serviceServerObject) Put(ctx context.Context) (objectSvc.PutObjectStrea
 	return &stream, nil
 }
 
-func (x *serviceServerObject) Head(ctx context.Context, req *objectV2.HeadRequest) (*objectV2.HeadResponse, error) {
+func (x *serviceServerObject) Head(_ context.Context, _ *objectV2.HeadRequest) (*objectV2.HeadResponse, error) {
 	return nil, errors.New("unimplemented")
 }
 
-func (x *serviceServerObject) Search(req *objectV2.SearchRequest, stream objectSvc.SearchStream) error {
+func (x *serviceServerObject) Search(_ *objectV2.SearchRequest, _ objectSvc.SearchStream) error {
 	return errors.New("unimplemented")
 }
 
-func (x *serviceServerObject) Delete(ctx context.Context, req *objectV2.DeleteRequest) (*objectV2.DeleteResponse, error) {
+func (x *serviceServerObject) Delete(_ context.Context, _ *objectV2.DeleteRequest) (*objectV2.DeleteResponse, error) {
 	return nil, errors.New("unimplemented")
 }
 
-func (x *serviceServerObject) GetRange(req *objectV2.GetRangeRequest, stream objectSvc.GetObjectRangeStream) error {
+func (x *serviceServerObject) GetRange(_ *objectV2.GetRangeRequest, _ objectSvc.GetObjectRangeStream) error {
 	return errors.New("unimplemented")
 }
 
-func (x *serviceServerObject) GetRangeHash(ctx context.Context, request *objectV2.GetRangeHashRequest) (*objectV2.GetRangeHashResponse, error) {
+func (x *serviceServerObject) GetRangeHash(_ context.Context, _ *objectV2.GetRangeHashRequest) (*objectV2.GetRangeHashResponse, error) {
 	return nil, errors.New("unimplemented")
 }
