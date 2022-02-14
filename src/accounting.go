@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"math/rand"
 
 	"github.com/nspcc-dev/neofs-api-go/v2/accounting"
@@ -12,20 +11,9 @@ type serviceServerAccounting struct {
 	bal accounting.Decimal
 }
 
-func (x *serviceServerAccounting) Balance(_ context.Context, req *accounting.BalanceRequest) (*accounting.BalanceResponse, error) {
-	var reqLog requestProcLogger
-	reqLog.name = "Accounting.Balance"
-
-	reqDumper.acquire(&reqLog)
-
-	defer reqLog.free()
-
-	printMessage(&reqLog, req)
-
+func (x *serviceServerAccounting) Balance(context.Context, *accounting.BalanceRequest) (*accounting.BalanceResponse, error) {
 	x.bal.SetValue(rand.Int63())
 	x.bal.SetPrecision(rand.Uint32())
-
-	reqLog.writeString(fmt.Sprintf("prepare random balance %d:%d", x.bal.GetValue(), x.bal.GetPrecision()))
 
 	var body accounting.BalanceResponseBody
 

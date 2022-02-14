@@ -6,21 +6,32 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 
 	"github.com/nspcc-dev/neo-go/pkg/crypto/keys"
 	accountingapigrpc "github.com/nspcc-dev/neofs-api-go/v2/accounting/grpc"
 	containerapigrpc "github.com/nspcc-dev/neofs-api-go/v2/container/grpc"
+	netmapapigrpc "github.com/nspcc-dev/neofs-api-go/v2/netmap/grpc"
 	objectapigrpc "github.com/nspcc-dev/neofs-api-go/v2/object/grpc"
 	sessionapigrpc "github.com/nspcc-dev/neofs-api-go/v2/session/grpc"
+	"github.com/nspcc-dev/neofs-node/pkg/local_object_storage/blobstor"
+	"github.com/nspcc-dev/neofs-node/pkg/local_object_storage/engine"
+	meta "github.com/nspcc-dev/neofs-node/pkg/local_object_storage/metabase"
+	"github.com/nspcc-dev/neofs-node/pkg/local_object_storage/shard"
 	accountinggrpc "github.com/nspcc-dev/neofs-node/pkg/network/transport/accounting/grpc"
 	containergrpc "github.com/nspcc-dev/neofs-node/pkg/network/transport/container/grpc"
+	netmapgrpc "github.com/nspcc-dev/neofs-node/pkg/network/transport/netmap/grpc"
 	objectgrpc "github.com/nspcc-dev/neofs-node/pkg/network/transport/object/grpc"
 	sessiongrpc "github.com/nspcc-dev/neofs-node/pkg/network/transport/session/grpc"
 	"github.com/nspcc-dev/neofs-node/pkg/services/accounting"
 	"github.com/nspcc-dev/neofs-node/pkg/services/container"
 	container2 "github.com/nspcc-dev/neofs-node/pkg/services/container/morph"
+	svcnetmap "github.com/nspcc-dev/neofs-node/pkg/services/netmap"
 	"github.com/nspcc-dev/neofs-node/pkg/services/object"
 	"github.com/nspcc-dev/neofs-node/pkg/services/session"
+	"github.com/nspcc-dev/neofs-node/pkg/services/session/storage"
+	"github.com/nspcc-dev/neofs-node/pkg/util"
+	"github.com/nspcc-dev/neofs-node/pkg/util/logger"
 	"github.com/nspcc-dev/neofs-sdk-go/netmap"
 	"google.golang.org/grpc"
 )
@@ -38,6 +49,12 @@ type appPreparer struct {
 
 	grpc struct {
 		server *grpc.Server
+	}
+
+	storage struct {
+		localObjects *engine.StorageEngine
+
+		sessionTokens storage.TokenStore
 	}
 
 	network struct {
@@ -70,6 +87,10 @@ type appPreparer struct {
 		accounting struct {
 			server accounting.Server
 		}
+
+		netmap struct {
+			server svcnetmap.Server
+		}
 	}
 }
 
@@ -87,6 +108,10 @@ type prepareAppContext struct {
 	localNode struct {
 		infoFilepath string
 	}
+
+	storage struct {
+		localObjectsFilepath string
+	}
 }
 
 func (x *appPreparer) grpcListenAddressTo(dst *string) {
@@ -95,6 +120,10 @@ func (x *appPreparer) grpcListenAddressTo(dst *string) {
 
 func (x *appPreparer) grpcServerTo(dst *grpc.Server) {
 	x.grpc.server = dst
+}
+
+func (x *appPreparer) localObjectStorageTo(dst *engine.StorageEngine) {
+	x.storage.localObjects = dst
 }
 
 func (x *appPreparer) prepare() {
@@ -106,6 +135,7 @@ func (x *appPreparer) prepare() {
 	x.cfg.innerRingKeysTo(&ctxPrep.network.ir.keysStr)
 	x.cfg.netMapEpochTo(&x.network.netMap.state.epoch)
 	x.cfg.localNodeInfoFilepathTo(&ctxPrep.localNode.infoFilepath)
+	x.cfg.localObjectStorageFilepathTo(&ctxPrep.storage.localObjectsFilepath)
 
 	// read the config
 	x.cfg.read()
@@ -188,10 +218,17 @@ func (x *appPreparer) prepareAPI(ctx *prepareAppContext) {
 	x.prepareAPISession(ctx)
 	x.prepareAPIContainer(ctx)
 	x.prepareAPIAccounting(ctx)
+	x.prepareAPINetmap(ctx)
+	x.prepareStorage(ctx)
 }
 
 func (x *appPreparer) prepareAPIObject(_ *prepareAppContext) {
-	x.api.object.server = new(serviceServerObject)
+	x.api.object.server = &serviceServerObject{
+		sessionTokens: &x.storage.sessionTokens,
+		containers:    &x.network.containers.state,
+		localObjects:  x.storage.localObjects,
+		netState:      &x.network.netMap.state,
+	}
 
 	// x.api.object.server = acl.New(
 	//	acl.WithNextService(x.api.object.server),
@@ -215,13 +252,18 @@ func (x *appPreparer) prepareAPIContainer(_ *prepareAppContext) {
 }
 
 func (x *appPreparer) prepareAPISession(_ *prepareAppContext) {
-	x.api.session.server = new(serviceServerSession)
+	x.api.session.server = session.NewExecutionService(&x.storage.sessionTokens)
 	x.api.session.server = session.NewSignService(&x.basics.key.PrivateKey, x.api.session.server)
 }
 
 func (x *appPreparer) prepareAPIAccounting(_ *prepareAppContext) {
 	x.api.accounting.server = new(serviceServerAccounting)
 	x.api.accounting.server = accounting.NewSignService(&x.basics.key.PrivateKey, x.api.accounting.server)
+}
+
+func (x *appPreparer) prepareAPINetmap(_ *prepareAppContext) {
+	x.api.netmap.server = &x.network.netMap.state
+	x.api.netmap.server = svcnetmap.NewSignService(&x.basics.key.PrivateKey, x.api.netmap.server)
 }
 
 func (x *appPreparer) prepareGRPC(_ *prepareAppContext) {
@@ -231,4 +273,46 @@ func (x *appPreparer) prepareGRPC(_ *prepareAppContext) {
 	sessionapigrpc.RegisterSessionServiceServer(x.grpc.server, sessiongrpc.New(x.api.session.server))
 	containerapigrpc.RegisterContainerServiceServer(x.grpc.server, containergrpc.New(x.api.container.server))
 	accountingapigrpc.RegisterAccountingServiceServer(x.grpc.server, accountinggrpc.New(x.api.accounting.server))
+	netmapapigrpc.RegisterNetmapServiceServer(x.grpc.server, netmapgrpc.New(x.api.netmap.server))
+}
+
+func (x *appPreparer) prepareStorage(ctx *prepareAppContext) {
+	var prm logger.Prm
+	err := prm.SetLevelString("debug")
+	if err != nil {
+		panic(fmt.Sprintf("logger level: %v", err))
+	}
+
+	l, err := logger.NewLogger(prm)
+	if err != nil {
+		panic(fmt.Sprintf("create logger: %v", err))
+	}
+
+	err = util.MkdirAllX(ctx.storage.localObjectsFilepath, 0644)
+	if err != nil {
+		panic(fmt.Sprintf("create local object storage path: %v", err))
+	}
+
+	*x.storage.localObjects = *engine.New(
+		engine.WithLogger(l),
+	)
+
+	_, err = x.storage.localObjects.AddShard(
+		shard.WithWriteCache(false),
+		shard.WithBlobStorOptions(
+			blobstor.WithLogger(l),
+			blobstor.WithBlobovniczaShallowWidth(2),
+			blobstor.WithBlobovniczaShallowDepth(1),
+			blobstor.WithRootPath(filepath.Join(ctx.storage.localObjectsFilepath, "blob")),
+		),
+		shard.WithMetaBaseOptions(
+			meta.WithLogger(l),
+			meta.WithPath(filepath.Join(ctx.storage.localObjectsFilepath, "meta")),
+		),
+	)
+	if err != nil {
+		panic(fmt.Sprintf("add shard: %v", err))
+	}
+
+	x.storage.sessionTokens = *storage.New()
 }

@@ -31,6 +31,7 @@ func (x *appConfig) read() {
 	x.readNetwork(&ctxRead)
 	x.readLocalNode(&ctxRead)
 	x.readGRPC(&ctxRead)
+	x.readStorage(&ctxRead)
 }
 
 func (x *appConfig) readBasics(ctx *readConfigContext) {
@@ -49,4 +50,8 @@ func (x *appConfig) readNetwork(ctx *readConfigContext) {
 	c := ctx.c.Sub("network")
 	*x.network.ir.keysStr = config.StringSlice(c, "inner_ring.keys")
 	*x.network.netMap.epoch = config.Uint(c, "netmap.epoch")
+}
+
+func (x *appConfig) readStorage(ctx *readConfigContext) {
+	*x.storage.localObjectsFilepath = config.String(&ctx.c, "storage.path")
 }

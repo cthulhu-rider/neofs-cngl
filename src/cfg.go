@@ -23,6 +23,10 @@ type appConfig struct {
 			epoch *uint64
 		}
 	}
+
+	storage struct {
+		localObjectsFilepath *string
+	}
 }
 
 func (x *appConfig) keyFilepathTo(dst *string) {
@@ -43,4 +47,8 @@ func (x *appConfig) innerRingKeysTo(dst *[]string) {
 
 func (x *appConfig) netMapEpochTo(dst *uint64) {
 	x.network.netMap.epoch = dst
+}
+
+func (x *appConfig) localObjectStorageFilepathTo(dst *string) {
+	x.storage.localObjectsFilepath = dst
 }
